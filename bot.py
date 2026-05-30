@@ -1,4 +1,4 @@
-import os
+[31.05.2026 1:55] Master Solution: import os
 import anthropic
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -112,6 +112,5 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     print("🔧 Ханди запущен!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == "__main__":
+[31.05.2026 1:55] Master Solution: if name == "main":
     main()
