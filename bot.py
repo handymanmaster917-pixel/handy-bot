@@ -1,4 +1,4 @@
-[31.05.2026 1:55] Master Solution: import os
+import os
 import anthropic
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
