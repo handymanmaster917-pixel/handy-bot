@@ -199,7 +199,7 @@ async def process_phone(update, context, uid, phone):
         f"🕐 {s.get('time','—')}\n"
         f"📱 {phone}\n\n"
         "Ожидайте подтверждения от мастера!\n"
-        "Написать /статус чтобы проверить статус заявки.",
+        "Написать /status чтобы проверить статус заявки.",
         reply_markup=MENU, parse_mode="Markdown"
     )
 
@@ -335,7 +335,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("статус", cmd_status))
+    app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.CONTACT, handle_contact))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
