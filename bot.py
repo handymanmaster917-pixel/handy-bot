@@ -5,18 +5,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ADMIN_ID = 8332704597  # @batumihandy
 
-# Состояния диалога
-user_states = {}  # uid -> state
-user_orders = {}  # uid -> dict с данными заказа
-
-STATES = {
-    "IDLE": 0,
-    "ASK_SERVICE": 1,
-    "ASK_ADDRESS": 2,
-    "ASK_TIME": 3,
-    "ASK_PHONE": 4,
-}
-
 MENU = ReplyKeyboardMarkup([
     [KeyboardButton("🔧 Вызвать мастера"), KeyboardButton("📋 Услуги")],
     [KeyboardButton("💰 Цены"), KeyboardButton("📞 Контакты")],
@@ -30,6 +18,9 @@ SERVICES_KB = ReplyKeyboardMarkup([
     [KeyboardButton("🔑 Ремонт под ключ"), KeyboardButton("❓ Другое")]
 ], resize_keyboard=True)
 
+# Состояния пользователей: {uid: {step, service, address, time, phone}}
+user_states = {}
+
 async def notify_admin(context, text):
     try:
         await context.bot.send_message(chat_id=ADMIN_ID, text=text)
@@ -38,8 +29,7 @@ async def notify_admin(context, text):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-    user_states[uid] = STATES["IDLE"]
-    user_orders[uid] = {}
+    user_states[uid] = {"step": "menu"}
     name = update.effective_user.first_name or "друг"
     await update.message.reply_text(
         f"Привет, {name}! 👋\n\n"
@@ -59,14 +49,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.effective_user.first_name or "Клиент"
 
     if uid not in user_states:
-        user_states[uid] = STATES["IDLE"]
-        user_orders[uid] = {}
+        user_states[uid] = {"step": "menu"}
 
     state = user_states[uid]
+    step = state.get("step", "menu")
 
-    # --- Обработка кнопок меню (всегда доступны) ---
+    # --- КНОПКИ ГЛАВНОГО МЕНЮ ---
     if text == "📋 Услуги":
-        user_states[uid] = STATES["IDLE"]
         await update.message.reply_text(
             "📋 *Наши услуги:*\n\n"
             "⚡ Электрика\n"
@@ -80,117 +69,135 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=MENU,
             parse_mode="Markdown"
         )
+        user_states[uid]["step"] = "menu"
         return
 
     if text == "📞 Контакты":
-        user_states[uid] = STATES["IDLE"]
         await update.message.reply_text(
             "📞 *Контакты:*\n\n"
             "👤 Алексей\n"
             "📱 +995 593 488 423\n"
-            "💬 @HandySolution_Batumi",
+            "💬 @HandySolution_Batumi\n\n"
+            "Звоните или пишите — ответим быстро!",
             reply_markup=MENU,
             parse_mode="Markdown"
         )
+        user_states[uid]["step"] = "menu"
         return
 
     if text == "💰 Цены":
-        user_states[uid] = STATES["IDLE"]
         await update.message.reply_text(
             "💰 *Цены:*\n\n"
             "Стоимость зависит от объёма работ.\n"
             "Выезд мастера для оценки — *БЕСПЛАТНО*!\n\n"
-            "Позвоните для уточнения: +995 593 488 423",
+            "Вызовите мастера и он сразу назовёт цену на месте 👇",
             reply_markup=MENU,
             parse_mode="Markdown"
         )
+        user_states[uid]["step"] = "menu"
         return
 
     if text == "⭐ Оставить отзыв":
-        user_states[uid] = STATES["IDLE"]
+        user_states[uid]["step"] = "review"
         await update.message.reply_text(
-            "⭐ Напишите ваш отзыв — мы передадим его команде!\n\n"
-            "Спасибо, что выбрали нас!",
-            reply_markup=MENU
-        )
-        return
-
-    # --- Начало заказа ---
-    if text == "🔧 Вызвать мастера":
-        user_states[uid] = STATES["ASK_SERVICE"]
-        user_orders[uid] = {}
-        await update.message.reply_text(
-            "Отлично! Давайте оформим заявку.\n\n"
-            "1️⃣ Какая услуга нужна?",
-            reply_markup=SERVICES_KB
-        )
-        return
-
-    # --- Шаги заказа ---
-    if state == STATES["ASK_SERVICE"]:
-        user_orders[uid]["service"] = text
-        user_states[uid] = STATES["ASK_ADDRESS"]
-        await update.message.reply_text(
-            f"✅ Услуга: {text}\n\n"
-            "2️⃣ Ваш адрес в Батуми?\n"
-            "(улица, номер дома, квартира)",
+            "⭐ Напишите ваш отзыв — мы передадим его команде:",
             reply_markup=ReplyKeyboardRemove()
         )
         return
 
-    if state == STATES["ASK_ADDRESS"]:
-        user_orders[uid]["address"] = text
-        user_states[uid] = STATES["ASK_TIME"]
+    if text == "🔧 Вызвать мастера":
+        user_states[uid] = {"step": "ask_service"}
         await update.message.reply_text(
-            f"✅ Адрес записал!\n\n"
-            "3️⃣ Удобное время для визита мастера?\n"
-            "(например: сегодня после 15:00, завтра утром)"
+            "Отлично! Давайте оформим заявку.\n\n"
+            "1️⃣ *Какая услуга нужна?*",
+            reply_markup=SERVICES_KB,
+            parse_mode="Markdown"
         )
         return
 
-    if state == STATES["ASK_TIME"]:
-        user_orders[uid]["time"] = text
-        user_states[uid] = STATES["ASK_PHONE"]
+    # --- ШАГИ ОФОРМЛЕНИЯ ЗАЯВКИ ---
+    if step == "ask_service":
+        user_states[uid]["service"] = text
+        user_states[uid]["step"] = "ask_address"
         await update.message.reply_text(
-            "4️⃣ Ваш номер телефона?\n"
-            "(для связи мастера с вами)"
+            f"Услуга: *{text}* ✅\n\n"
+            "2️⃣ *Ваш адрес в Батуми?*\n"
+            "(улица, номер дома, квартира)",
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode="Markdown"
         )
         return
 
-    if state == STATES["ASK_PHONE"]:
-        user_orders[uid]["phone"] = text
-        user_states[uid] = STATES["IDLE"]
+    if step == "ask_address":
+        user_states[uid]["address"] = text
+        user_states[uid]["step"] = "ask_time"
+        await update.message.reply_text(
+            f"Адрес: *{text}* ✅\n\n"
+            "3️⃣ *Удобное время для визита мастера?*\n"
+            "(например: сегодня после 15:00, завтра утром)",
+            parse_mode="Markdown"
+        )
+        return
 
-        order = user_orders[uid]
+    if step == "ask_time":
+        user_states[uid]["time"] = text
+        user_states[uid]["step"] = "ask_phone"
+        await update.message.reply_text(
+            f"Время: *{text}* ✅\n\n"
+            "4️⃣ *Ваш номер телефона?*\n"
+            "(для связи мастера с вами)",
+            parse_mode="Markdown"
+        )
+        return
 
-        # Подтверждение клиенту
+    if step == "ask_phone":
+        user_states[uid]["phone"] = text
+        user_states[uid]["step"] = "menu"
+
+        s = user_states[uid]
+        order_text = (
+            f"🔔 *НОВАЯ ЗАЯВКА!*\n\n"
+            f"👤 Клиент: {username}\n"
+            f"🔧 Услуга: {s.get('service', '—')}\n"
+            f"📍 Адрес: {s.get('address', '—')}\n"
+            f"🕐 Время: {s.get('time', '—')}\n"
+            f"📱 Телефон: {text}\n"
+            f"💬 Telegram ID: {uid}"
+        )
+
+        await notify_admin(context, order_text)
+
         await update.message.reply_text(
             "✅ *Заявка принята!*\n\n"
-            f"🔧 Услуга: {order.get('service')}\n"
-            f"📍 Адрес: {order.get('address')}\n"
-            f"🕐 Время: {order.get('time')}\n"
-            f"📱 Телефон: {order.get('phone')}\n\n"
-            "Мастер свяжется с вами в ближайшее время!\n"
-            "По вопросам: +995 593 488 423 (Алексей)",
+            f"🔧 Услуга: {s.get('service', '—')}\n"
+            f"📍 Адрес: {s.get('address', '—')}\n"
+            f"🕐 Время: {s.get('time', '—')}\n"
+            f"📱 Телефон: {text}\n\n"
+            "Мастер свяжется с вами в ближайшее время!\n\n"
+            "По вопросам: @HandySolution_Batumi\n"
+            "📞 +995 593 488 423",
             reply_markup=MENU,
             parse_mode="Markdown"
         )
+        return
 
-        # Уведомление админу
+    if step == "review":
+        user_states[uid]["step"] = "menu"
         await notify_admin(
             context,
-            f"🔔 НОВАЯ ЗАЯВКА!\n\n"
-            f"👤 Клиент: {username} (ID: {uid})\n"
-            f"🔧 Услуга: {order.get('service')}\n"
-            f"📍 Адрес: {order.get('address')}\n"
-            f"🕐 Время: {order.get('time')}\n"
-            f"📱 Телефон: {order.get('phone')}"
+            f"⭐ Отзыв от {username} (ID: {uid}):\n\n{text}"
+        )
+        await update.message.reply_text(
+            "Спасибо за отзыв! ⭐\n"
+            "Мы очень ценим ваше мнение!",
+            reply_markup=MENU
         )
         return
 
-    # Если не в процессе заказа — напомнить меню
+    # Любое другое сообщение
     await update.message.reply_text(
-        "Выберите нужный пункт меню 👇",
+        "Выберите действие в меню 👇\n"
+        "Или позвоните: +995 593 488 423",
         reply_markup=MENU
     )
 
@@ -198,7 +205,7 @@ def main():
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    print("Ханди запущен (без AI)!")
+    print("Ханди запущен (без Claude API)!")
     app.run_polling()
 
 if __name__ == "__main__":
